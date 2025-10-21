@@ -11,6 +11,7 @@ from Src.Dtos.nomenclature_dto import nomenclature_dto
 from Src.Dtos.range_dto import range_dto
 from Src.Dtos.category_dto import category_dto
 
+
 class start_service:
     # Репозиторий
     __repo: reposity = reposity()
@@ -23,7 +24,7 @@ class start_service:
     __cache = {}
 
     # Наименование файла (полный путь)
-    __full_file_name:str = ""
+    __full_file_name: str = ""
 
     def __init__(self):
         self.__repo.initalize()
@@ -32,18 +33,19 @@ class start_service:
     def __new__(cls):
         if not hasattr(cls, 'instance'):
             cls.instance = super(start_service, cls).__new__(cls)
-        return cls.instance 
+        return cls.instance
 
-    # Текущий файл
+        # Текущий файл
+
     @property
     def file_name(self) -> str:
         return self.__full_file_name
 
     # Полный путь к файлу настроек
     @file_name.setter
-    def file_name(self, value:str):
+    def file_name(self, value: str):
         validator.validate(value, str)
-        full_file_name = os.path.abspath(value)        
+        full_file_name = os.path.abspath(value)
         if os.path.exists(full_file_name):
             self.__full_file_name = full_file_name.strip()
         else:
@@ -55,120 +57,124 @@ class start_service:
             raise operation_exception("Не найден файл настроек!")
 
         try:
-            with open( self.__full_file_name, 'r') as file_instance:
-                settings = json.load(file_instance)
+            with open(self.__full_file_name, 'r', encoding='utf-8') as file_instance:
+                settings_data = json.load(file_instance)
 
-                if "default_receipt" in settings.keys():
-                    data = settings["default_receipt"]
-                    return self.convert(data)
+                if "default_receipt" in settings_data:
+                    receipt_data = settings_data["default_receipt"]
+                    return self.convert(receipt_data)
 
             return False
-        except Exception as e:
-            error_message = str(e)
+        except Exception:
             return False
-        
+
     # Сохранить элемент в репозитории
-    def __save_item(self, key:str, dto, item):
+    def __save_item(self, key: str, dto, item):
         validator.validate(key, str)
         item.unique_code = dto.id
-        self.__cache.setdefault(dto.id, item)
-        self.__repo.data[ key ].append(item)
+        self.__cache[dto.id] = item
+        self.__repo.data[key].append(item)
 
-    # Загрузить единицы измерений   
+    # Загрузить единицы измерений
     def __convert_ranges(self, data: dict) -> bool:
         validator.validate(data, dict)
-        ranges = data['ranges'] if 'ranges' in data else []    
-        if len(ranges) == 0:
+        ranges_list = data.get('ranges', [])
+        if len(ranges_list) == 0:
             return False
-         
-        for range in ranges:
-            dto = range_dto().create(range)
+
+        for range_data in ranges_list:
+            dto = range_dto().create(range_data)
             item = range_model.from_dto(dto, self.__cache)
-            self.__save_item( reposity.range_key(), dto, item )
+            self.__save_item(reposity.range_key(), dto, item)
 
         return True
 
     # Загрузить группы номенклатуры
     def __convert_groups(self, data: dict) -> bool:
         validator.validate(data, dict)
-        categories =  data['categories'] if 'categories' in data else []    
-        if len(categories) == 0:
+        categories_list = data.get('categories', [])
+        if len(categories_list) == 0:
             return False
 
-        for category in  categories:
-            dto = category_dto().create(category)    
-            item = group_model.from_dto(dto, self.__cache )
-            self.__save_item( reposity.group_key(), dto, item )
+        for category_data in categories_list:
+            dto = category_dto().create(category_data)
+            item = group_model.from_dto(dto, self.__cache)
+            self.__save_item(reposity.group_key(), dto, item)
 
         return True
 
     # Загрузить номенклатуру
-    def __convert_nomenclatures(   self, data: dict) -> bool:
-        validator.validate(data, dict)      
-        nomenclatures = data['nomenclatures'] if 'nomenclatures' in data else []   
-        if len(nomenclatures) == 0:
+    def __convert_nomenclatures(self, data: dict) -> bool:
+        validator.validate(data, dict)
+        nomenclatures_list = data.get('nomenclatures', [])
+        if len(nomenclatures_list) == 0:
             return False
-         
-        for nomenclature in nomenclatures:
-            dto = nomenclature_dto().create(nomenclature)
+
+        for nomenclature_data in nomenclatures_list:
+            dto = nomenclature_dto().create(nomenclature_data)
             item = nomenclature_model.from_dto(dto, self.__cache)
-            self.__save_item( reposity.nomenclature_key(), dto, item )
+            self.__save_item(reposity.nomenclature_key(), dto, item)
 
-        return True        
+        return True
 
+        # Обработать полученный словарь
 
-    # Обработать полученный словарь    
     def convert(self, data: dict) -> bool:
         validator.validate(data, dict)
 
         # 1 Созданим рецепт
-        cooking_time = data['cooking_time'] if 'cooking_time' in data else ""
-        portions = int(data['portions']) if 'portions' in data else 0
-        name =  data['name'] if 'name' in data else "НЕ ИЗВЕСТНО"
-        self.__default_receipt = receipt_model.create(name, cooking_time, portions  )
+        cooking_time = data.get('cooking_time', "")
+        portions = int(data.get('portions', 0))
+        name = data.get('name', "НЕ ИЗВЕСТНО")
+        self.__default_receipt = receipt_model.create(name, cooking_time, portions)
 
         # Загрузим шаги приготовления
-        steps =  data['steps'] if 'steps' in data else []
-        for step in steps:
-            if step.strip() != "":
-                self.__default_receipt.steps.append( step )
+        steps_list = data.get('steps', [])
+        for step_text in steps_list:
+            if step_text.strip() != "":
+                self.__default_receipt.steps.append(step_text)
 
         self.__convert_ranges(data)
         self.__convert_groups(data)
-        self.__convert_nomenclatures(data)        
-
+        self.__convert_nomenclatures(data)
 
         # Собираем рецепт
-        compositions =  data['composition'] if 'composition' in data else []      
-        for composition in compositions:
+        compositions_list = data.get('composition', [])
+        for composition_data in compositions_list:
             # TODO: Заменить код через Dto
-            namnomenclature_id = composition['nomenclature_id'] if 'nomenclature_id' in composition else ""
-            range_id = composition['range_id'] if 'range_id' in composition else ""
-            value  = composition['value'] if 'value' in composition else ""
-            nomenclature = self.__cache[namnomenclature_id] if namnomenclature_id in self.__cache else None
-            range = self.__cache[range_id] if range_id in self.__cache else None
-            item = receipt_item_model.create(  nomenclature, range, value)
-            self.__default_receipt.composition.append(item)
-            
+            nomenclature_id = composition_data.get('nomenclature_id', "")
+            range_id = composition_data.get('range_id', "")
+            value = composition_data.get('value', "")
+            nomenclature_item = self.__cache.get(nomenclature_id)
+            range_item = self.__cache.get(range_id)
+            composition_item = receipt_item_model.create(nomenclature_item, range_item, value)
+            self.__default_receipt.composition.append(composition_item)
+
         # Сохраняем рецепт
-        self.__repo.data[ reposity.receipt_key() ].append(self.__default_receipt)
+        self.__repo.data[reposity.receipt_key()].append(self.__default_receipt)
         return True
 
     """
     Стартовый набор данных
     """
+
     @property
     def data(self):
-        return self.__repo.data   
+        return self.__repo.data
 
     """
     Основной метод для генерации эталонных данных
     """
+
     def start(self):
-        self.file_name = "settings.json"
-        result = self.load()
-        if result == False:
+        current_directory = os.path.dirname(__file__)
+        settings_path = os.path.join(current_directory, "settings.json")
+
+        if not os.path.exists(settings_path):
+            raise operation_exception(f"Файл настроек не найден: {settings_path}")
+
+        self.file_name = settings_path
+        load_result = self.load()
+
+        if not load_result:
             raise operation_exception("Невозможно сформировать стартовый набор данных!")
-        
-
-
